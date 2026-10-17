@@ -135,11 +135,13 @@ SharedLevelTextures read_level_textures(
 		verify(material_set.textures.size() <= 15,
 			"Too many textures on moby class '%s'!",
 			cls.tag().c_str());
+		bool resident = cls.stash_textures(false);
 		s32 i = 0;
 		for (; i < (s32) material_set.textures.size(); i++) {
 			FileReference& texture = material_set.textures[i];
 			auto stream = texture.open_binary_file_for_reading();
 			shared.textures.emplace_back(LevelTexture{read_png(*stream)});
+			shared.textures.back().rac1_no_mips = resident;
 		}
 		for (; i < 16; i++) {
 			shared.textures.emplace_back();
@@ -280,7 +282,12 @@ std::tuple<s32, s32> write_shared_level_textures(
 				gs_table.push_back({PSM_RGBA32, 0, 0, record.palette_offset, record.palette_offset});
 			}
 			
-			if (!record.stashed) {
+			if (!record.stashed && config_game_is_rac1 && record.rac1_no_mips) {
+				// Type 1: the pixels alone, no mip images (R&C1 retail).
+				data.pad(0x100, 0);
+				record.texture_offset = data.tell() - base_ofs;
+				data.write_v(texture.data);
+			} else if (!record.stashed) {
 				mipmap_data = box_filtered_mip(texture, 4);
 
 				gs.pad(0x100, 0);
@@ -357,6 +364,8 @@ ArrayRange write_level_texture_table(
 			entry.height = texture.height;
 			if (record->stashed) {
 				entry.type = 0;
+			} else if (record->rac1_no_mips && range.table == MOBY_TEXTURE_TABLE) {
+				entry.type = 1;
 			} else {
 				entry.type = 3;
 			}
@@ -366,7 +375,7 @@ ArrayRange write_level_texture_table(
 			}
 			verify_fatal(palette_record->palette_offset != -1);
 			entry.palette = palette_record->palette_offset / 0x100;
-			if (!record->stashed) {
+			if (!record->stashed && record->mipmap_offset != -1) {
 				entry.mipmap = record->mipmap_offset / 0x100;
 			}
 			record->indices[range.table] = table_count;
@@ -732,10 +741,13 @@ void deduplicate_level_textures(std::vector<LevelTexture>& textures)
 		}
 		verify_fatal(lowest != SIZE_MAX);
 		bool stashed = false;
+		bool no_mips = false;
 		for (size_t index : group) {
 			stashed |= textures[index].stashed;
+			no_mips |= textures[index].rac1_no_mips;
 		}
 		for (size_t index : group) {
+			textures[index].rac1_no_mips = no_mips; // the lowest one is written
 			if (index != lowest) {
 				textures[index].stashed = stashed;
 				textures[index].out_edge = lowest;

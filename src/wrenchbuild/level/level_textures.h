@@ -73,6 +73,7 @@ struct LevelTexture
 {
 	Opt<Texture> texture;
 	bool stashed = false;
+	bool rac1_no_mips = false; // Executive Edition fork: R&C1 type 1 (stash_textures on its class)
 	s32 out_edge = -1;
 	s32 palette_out_edge = -1;
 	s32 texture_offset = -1;

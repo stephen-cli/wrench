@@ -51,6 +51,18 @@ void unpack_moby_classes(
 		if (stashed) {
 			asset.set_stash_textures(true);
 		}
+		// Executive Edition fork: R&C1's form of the same thing. The textures of
+		// the items carried or worn by Ratchet (the gadget-table classes, the
+		// boots, Clank) are type 1 on the retail disc and carry no mip images,
+		// and no class mixes type 1 with other types (all 19 PAL levels).
+		if (config.game() == Game::RAC) {
+			for (u8 slot : entry.textures) {
+				if (slot != 0xff && slot < textures.size() && textures[slot].type == 1) {
+					asset.set_stash_textures(true);
+					break;
+				}
+			}
+		}
 		
 		unpack_level_materials(asset.materials(), entry.textures, textures, texture_data, gs_ram, config.game(), stashed ? moby_stash_addr : -1);
 		
