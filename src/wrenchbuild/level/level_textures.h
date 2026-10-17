@@ -129,7 +129,8 @@ std::tuple<s32, s32> write_shared_level_textures(
 	OutputStream& data,
 	OutputStream& gs,
 	std::vector<GsRamEntry>& gs_table,
-	std::vector<LevelTexture>& textures);
+	std::vector<LevelTexture>& textures,
+	Game game);
 ArrayRange write_level_texture_table(
 	OutputStream& dest, std::vector<LevelTexture>& textures, LevelTextureRange range);
 void write_level_texture_indices(

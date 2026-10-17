@@ -290,7 +290,7 @@ void pack_level_core(
 		deduplicate_level_textures(shared.textures);
 		deduplicate_level_palettes(shared.textures);
 		
-		auto [textures_ofs, stash_count] = write_shared_level_textures(data, gs_ram, gs_table, shared.textures);
+		auto [textures_ofs, stash_count] = write_shared_level_textures(data, gs_ram, gs_table, shared.textures, config.game());
 		header.textures_base_offset = textures_ofs;
 		if (config.game() != Game::RAC) {
 			header.moby_gs_stash_count_rac23dl = stash_count;

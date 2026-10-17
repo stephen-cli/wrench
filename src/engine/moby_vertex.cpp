@@ -218,7 +218,17 @@ u32 write_vertex_table(OutBuffer& dest, const VertexTable& src, MobyFormat forma
 	
 	if (format == MobyFormat::RAC1) {
 		vertex_header.unknown_e = dest.tell() - vertex_header_ofs;
-		dest.write_multiple(src.unknown_e_data);
+		if (src.unknown_e_data.empty()) {
+			// Executive Edition fork: a vertex table read from another game has
+			// no R&C1 colour multipliers. They are RGBA per transfer vertex,
+			// 0x80 = 1.0, and every one on the retail disc is 0x80 (OpenRAC
+			// docs/engine/formats/MOBY.md), so neutral ones are generated.
+			s32 size = (vertex_header.transfer_vertex_count * 4 + 15) / 16 * 16;
+			std::vector<u8> neutral(size, 0x80);
+			dest.write_multiple(neutral);
+		} else {
+			dest.write_multiple(src.unknown_e_data);
+		}
 		dest.write(vertex_header_ofs, vertex_header);
 	} else {
 		GcUyaDlVertexTableHeader compact_vertex_header;

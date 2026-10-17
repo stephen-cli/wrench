@@ -34,6 +34,12 @@ add_executable(memmap
 )
 target_link_libraries(memmap wrenchplatform)
 
+# Executive Edition fork: moby class format conversion between the games.
+add_executable(mobyconvert
+	mobyconvert.cpp
+)
+target_link_libraries(mobyconvert wrenchengine wrenchcore)
+
 add_executable(asset2json
 	asset2json.cpp
 )

@@ -190,12 +190,80 @@ SharedLevelTextures read_level_textures(
 	return shared;
 }
 
+// Executive Edition fork: the mip images R&C1 expects, as measured on the
+// retail discs. A mipped texture (types 3 and 4) has a half-size image stored
+// right after its pixels in the shared texture data, which the game reads as
+// mip level 1, and a quarter-size image in GS RAM; type 1 textures have
+// neither. Both are box-filtered: each pixel is the palette entry nearest to
+// the average colour of the block it covers (retail's half images are within
+// 1.9 RGB units of a 2x2 average, its quarter images within 2.6 of a 4x4 one).
+// Upstream writes no half image, so the GS read the next texture in the pool
+// as mip level 1 (chaoticgd/wrench#286), and point samples the quarter image.
+static u8 csm1_index(u8 index)
+{
+	return (((index & 16) >> 1) != (index & 8)) ? (index ^ 0b00011000) : index;
+}
+
+static std::vector<u8> box_filtered_mip(const Texture& texture, s32 factor)
+{
+	// The palette is in GS (CSM1) order by now; pixel indices are not.
+	const std::vector<u32>& stored = texture.palette();
+	u8 colours[256][4] = {};
+	for (s32 i = 0; i < 256 && i < (s32) stored.size(); i++) {
+		u32 c = stored[csm1_index((u8) i)];
+		for (s32 k = 0; k < 4; k++) {
+			colours[i][k] = (c >> (k * 8)) & 0xff;
+		}
+	}
+	s32 count = std::min((s32) stored.size(), 256);
+	s32 width = std::max(texture.width / factor, 1);
+	s32 height = std::max(texture.height / factor, 1);
+	std::vector<u8> mip(width * height);
+	for (s32 y = 0; y < height; y++) {
+		for (s32 x = 0; x < width; x++) {
+			s32 sum[4] = {};
+			s32 n = 0;
+			for (s32 dy = 0; dy < factor; dy++) {
+				for (s32 dx = 0; dx < factor; dx++) {
+					s32 sx = x * factor + dx;
+					s32 sy = y * factor + dy;
+					if (sx >= texture.width || sy >= texture.height) {
+						continue;
+					}
+					u8 index = texture.data[sy * texture.width + sx];
+					for (s32 k = 0; k < 4; k++) {
+						sum[k] += colours[index][k];
+					}
+					n++;
+				}
+			}
+			s32 best = 0;
+			s64 best_distance = INT64_MAX;
+			for (s32 i = 0; i < count; i++) {
+				s64 distance = 0;
+				for (s32 k = 0; k < 4; k++) {
+					s64 d = (s64) colours[i][k] * n - sum[k];
+					distance += d * d;
+				}
+				if (distance < best_distance) {
+					best_distance = distance;
+					best = i;
+				}
+			}
+			mip[y * width + x] = (u8) best;
+		}
+	}
+	return mip;
+}
+
 std::tuple<s32, s32> write_shared_level_textures(
 	OutputStream& data,
 	OutputStream& gs,
 	std::vector<GsRamEntry>& gs_table,
-	std::vector<LevelTexture>& textures)
+	std::vector<LevelTexture>& textures,
+	Game game)
 {
+	bool config_game_is_rac1 = game == Game::RAC;
 	data.pad(0x100, 0);
 	s64 base_ofs = data.tell();
 	std::vector<u8> mipmap_data;
@@ -213,13 +281,8 @@ std::tuple<s32, s32> write_shared_level_textures(
 			}
 			
 			if (!record.stashed) {
-				mipmap_data.resize((texture.width * texture.height) / 16);
-				for (s32 y = 0; y < texture.height / 4; y++) {
-					for (s32 x = 0; x < texture.width / 4; x++) {
-						mipmap_data[y * (texture.width / 4) + x] = texture.data[y * 4 * texture.width + x * 4];
-					}
-				}
-				
+				mipmap_data = box_filtered_mip(texture, 4);
+
 				gs.pad(0x100, 0);
 				record.mipmap_offset = gs.tell();
 				gs.write_v(mipmap_data);
@@ -235,6 +298,10 @@ std::tuple<s32, s32> write_shared_level_textures(
 				data.pad(0x100, 0);
 				record.texture_offset = data.tell() - base_ofs;
 				data.write_v(texture.data);
+				if (config_game_is_rac1) {
+					// Mip level 1, read by the game right after the pixels.
+					data.write_v(box_filtered_mip(texture, 2));
+				}
 			}
 		}
 	}
