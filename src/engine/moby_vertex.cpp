@@ -222,9 +222,15 @@ u32 write_vertex_table(OutBuffer& dest, const VertexTable& src, MobyFormat forma
 			// Executive Edition fork: a vertex table read from another game has
 			// no R&C1 colour multipliers. They are RGBA per transfer vertex,
 			// 0x80 = 1.0, and every one on the retail disc is 0x80 (OpenRAC
-			// docs/engine/formats/MOBY.md), so neutral ones are generated.
+			// docs/engine/formats/MOBY.md), so neutral ones are generated. The
+			// padding to the next quadword stays zero, as on the disc: R&C1's
+			// vertex pipeline also runs the trailing records, which take their
+			// multipliers from it, and with 0x80 there a level drawing the class
+			// stopped presenting frames (Kalebo III's sign, found by bisecting
+			// in PCSX2: the same class with zero padding draws).
 			s32 size = (vertex_header.transfer_vertex_count * 4 + 15) / 16 * 16;
-			std::vector<u8> neutral(size, 0x80);
+			std::vector<u8> neutral(size, 0);
+			std::fill(neutral.begin(), neutral.begin() + vertex_header.transfer_vertex_count * 4, 0x80);
 			dest.write_multiple(neutral);
 		} else {
 			dest.write_multiple(src.unknown_e_data);
